@@ -1,0 +1,17 @@
+# 1. Python Junk
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# 2. Node/Frontend Junk (Heavy folders)
+node_modules/
+dist/
+.DS_Store
+
+# 3. Docker Junk
+.docker/
+
+# 4. OS Junk
+Thumbs.db

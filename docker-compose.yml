@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # 1. The Database (PostgreSQL)
+  db:
+    image: postgres:15
+    container_name: hospital_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: hospital_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - hospital_network
+
+  # 2. The Backend API (FastAPI)
+  backend:
+    build: ./backend
+    container_name: hospital_backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://admin:adminpassword@db/hospital_db
+    depends_on:
+      - db
+    networks:
+      - hospital_network
+
+  # 3. The AI Engine (Python Microservice)
+  ai_engine:
+    build: ./ai_engine
+    container_name: hospital_ai_engine
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    volumes:
+      - ./ai_engine:/app
+    ports:
+      - "8001:8001"
+    networks:
+      - hospital_network
+
+  # 4. The Frontend (React + Vite)
+  frontend:
+    build: ./frontend
+    container_name: hospital_frontend
+    # We use a special command to keep it running for development
+    command: npm run dev -- --host
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+    networks:
+      - hospital_network
+
+volumes:
+  postgres_data:
+
+networks:
+  hospital_network:
+    driver: bridge
