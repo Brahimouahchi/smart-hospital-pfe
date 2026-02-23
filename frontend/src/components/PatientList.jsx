@@ -1,126 +1,120 @@
-import React, { useEffect, useState } from 'react';
-import { Table, Tag, Card, message, Button, Modal, Progress, Divider } from 'antd';
-import { RobotOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Table, Card, Button, Modal, Form, Input, InputNumber, message, Typography, Space } from 'antd';
+import { PlusOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
 import axios from 'axios';
+
+const { Title } = Typography;
 
 const PatientList = () => {
   const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Modal State (The popup window)
+  const [filteredPatients, setFilteredPatients] = useState([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [prediction, setPrediction] = useState(null);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [form] = Form.useForm();
 
-  useEffect(() => {
-    fetchPatients();
-  }, []);
+  // Find out if logged in user is Staff or Doctor
+  const userRole = localStorage.getItem('role') || 'guest';
 
+  // 1. Fetch Patients from Database
   const fetchPatients = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get('http://localhost:8000/patients/');
-      setPatients(response.data);
-      setLoading(false);
+      const res = await axios.get('http://localhost:8000/patients/');
+      setPatients(res.data);
+      setFilteredPatients(res.data);
     } catch (error) {
-      message.error('Could not fetch patients');
+      message.error("Error loading patient database");
+    } finally {
       setLoading(false);
     }
   };
 
-  // --- THE AI FUNCTION ---
-  const checkRisk = async (patient) => {
-    setAnalyzing(true);
-    setIsModalVisible(true);
-    setPrediction(null); // Clear old result
+  useEffect(() => { fetchPatients(); }, []);
 
+  // 2. Register New Patient
+  const handleAddPatient = async (values) => {
     try {
-      // 1. Call the AI Engine (Port 8001)
-      const response = await axios.post('http://localhost:8001/predict_heart_risk', {
-        age: patient.age,
-        medical_history: patient.medical_history
-      });
-
-      // 2. Wait 1 second (to look cool, like it's thinking)
-      setTimeout(() => {
-        setPrediction(response.data);
-        setAnalyzing(false);
-      }, 1000);
-
+      await axios.post('http://localhost:8000/patients/', values);
+      message.success("Patient successfully registered!");
+      setIsModalVisible(false);
+      form.resetFields();
+      fetchPatients(); // Reload table automatically
     } catch (error) {
-      message.error("AI Engine is offline!");
-      setAnalyzing(false);
+      message.error("Failed to add patient.");
     }
+  };
+
+  // 3. Search Filter
+  const handleSearch = (value) => {
+    setSearchText(value);
+    const filtered = patients.filter(patient => 
+      patient.full_name.toLowerCase().includes(value.toLowerCase()) || 
+      patient.id.toString().includes(value)
+    );
+    setFilteredPatients(filtered);
   };
 
   const columns = [
-    { title: 'Full Name', dataIndex: 'full_name', key: 'full_name', render: text => <b>{text}</b> },
-    { title: 'Age', dataIndex: 'age', key: 'age' },
-    { title: 'History', dataIndex: 'medical_history', key: 'medical_history' },
-    {
-      title: 'AI Analysis',
-      key: 'action',
-      render: (_, record) => (
-        <Button 
-          type="dashed" 
-          icon={<RobotOutlined />} 
-          onClick={() => checkRisk(record)}
-          style={{ color: '#1890ff', borderColor: '#1890ff' }}
-        >
-          Check Risk
-        </Button>
-      ),
-    },
+    { title: 'Patient ID', dataIndex: 'id', key: 'id', width: '10%' },
+    { title: 'Full Name', dataIndex: 'full_name', key: 'full_name' },
+    { title: 'Age', dataIndex: 'age', key: 'age', width: '10%' },
+    { title: 'Medical History', dataIndex: 'medical_history', key: 'medical_history' },
   ];
 
   return (
-    <Card title="👨‍⚕️ Patient Database" style={{ margin: 20 }}>
-      <Table dataSource={patients} columns={columns} rowKey="id" loading={loading} />
-
-      {/* --- AI RESULT POPUP --- */}
-      <Modal 
-        title="🤖 AI Health Analysis" 
-        open={isModalVisible} 
-        onCancel={() => setIsModalVisible(false)}
-        footer={null}
-      >
-        {analyzing ? (
-          <div style={{ textAlign: 'center', padding: 20 }}>
-            <p>Analyzing medical records...</p>
-            <Progress percent={99} status="active" showInfo={false} />
-          </div>
-        ) : prediction ? (
-          <div style={{ textAlign: 'center' }}>
-            {/* 1. The Score */}
-            <Progress 
-              type="circle" 
-              percent={prediction.risk_score} 
-              format={percent => `${percent}% Risk`} 
-              status={prediction.risk_score > 50 ? "exception" : "normal"}
-              width={120}
+    <div style={{ padding: '20px' }}>
+      <Card 
+        title={<Title level={3}><UserOutlined /> Patient Database</Title>}
+        extra={
+          <Space>
+            <Input 
+              placeholder="Search by name or ID..." 
+              prefix={<SearchOutlined />} 
+              value={searchText}
+              onChange={(e) => handleSearch(e.target.value)}
+              style={{ width: 250 }}
+              allowClear
             />
-            
-            {/* 2. The Status */}
-            <h2 style={{ marginTop: 20, color: prediction.risk_score > 50 ? 'red' : 'green' }}>
-              {prediction.status}
-            </h2>
+            {/* ONLY STAFF CAN SEE THIS BUTTON */}
+            {userRole === 'staff' && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
+                Register Patient
+              </Button>
+            )}
+          </Space>
+        }
+      >
+        <Table 
+          dataSource={filteredPatients} 
+          columns={columns} 
+          rowKey="id" 
+          loading={loading}
+          locale={{ emptyText: 'No patients found. Please register a new patient.' }}
+        />
+      </Card>
 
-            <Divider />
-            
-            {/* 3. The Reasons */}
-            <div style={{ textAlign: 'left' }}>
-              <b>Identified Risk Factors:</b>
-              <ul>
-                {prediction.analysis.length > 0 ? (
-                   prediction.analysis.map((reason, index) => <li key={index}>{reason}</li>)
-                ) : (
-                   <li>No immediate risks found.</li>
-                )}
-              </ul>
-            </div>
-          </div>
-        ) : null}
+      {/* Registration Form Modal */}
+      <Modal 
+        title="Register New Patient" 
+        open={isModalVisible} 
+        onCancel={() => setIsModalVisible(false)} 
+        onOk={() => form.submit()}
+        okText="Save to Database"
+      >
+        <Form form={form} layout="vertical" onFinish={handleAddPatient}>
+          <Form.Item name="full_name" label="Full Name" rules={[{ required: true, message: 'Please enter patient name' }]}>
+            <Input placeholder="e.g., Ali Benmoussa" />
+          </Form.Item>
+          <Form.Item name="age" label="Age" rules={[{ required: true, message: 'Please enter age' }]}>
+            <InputNumber min={1} max={120} style={{ width: '100%' }} placeholder="e.g., 45" />
+          </Form.Item>
+          <Form.Item name="medical_history" label="Medical History (Optional)">
+            <Input.TextArea rows={4} placeholder="e.g., Asthma, No known allergies..." />
+          </Form.Item>
+        </Form>
       </Modal>
-    </Card>
+    </div>
   );
 };
 

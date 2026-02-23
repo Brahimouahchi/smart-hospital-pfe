@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Card, message } from 'antd';
+import { Form, Input, Button, Card, Typography, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import axios from 'axios';
+
+const { Title } = Typography;
 
 const Login = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
@@ -9,20 +11,21 @@ const Login = ({ onLogin }) => {
   const onFinish = async (values) => {
     setLoading(true);
     try {
-      // Send data to Python (Must use FormData for OAuth2 standard)
       const formData = new FormData();
       formData.append('username', values.username);
       formData.append('password', values.password);
 
       const response = await axios.post('http://localhost:8000/token', formData);
-
-      // If successful, save the token and tell App we are logged in
+      
+      // Save all data
       localStorage.setItem('token', response.data.access_token);
-      message.success('Login Successful!');
-      onLogin(); // <--- This switches the view to Dashboard
+      localStorage.setItem('username', values.username);
+      localStorage.setItem('role', response.data.role); // CRITICAL
 
+      message.success('Login successful!');
+      onLogin();
     } catch (error) {
-      message.error('Invalid Username or Password');
+      message.error('Invalid credentials or server error');
     } finally {
       setLoading(false);
     }
@@ -30,26 +33,16 @@ const Login = ({ onLogin }) => {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
-      <Card style={{ width: 350, boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <h2 style={{ color: '#1890ff' }}>🏥 Smart Hospital</h2>
-          <p>Secure Staff Login</p>
-        </div>
-
-        <Form name="login" onFinish={onFinish}>
-          <Form.Item name="username" rules={[{ required: true, message: 'Please input your Username!' }]}>
+      <Card style={{ width: 350 }}>
+        <Title level={3} style={{ textAlign: 'center' }}>Hospital Login</Title>
+        <Form onFinish={onFinish} layout="vertical">
+          <Form.Item name="username" rules={[{ required: true }]}>
             <Input prefix={<UserOutlined />} placeholder="Username" />
           </Form.Item>
-
-          <Form.Item name="password" rules={[{ required: true, message: 'Please input your Password!' }]}>
+          <Form.Item name="password" rules={[{ required: true }]}>
             <Input.Password prefix={<LockOutlined />} placeholder="Password" />
           </Form.Item>
-
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
-              Log in
-            </Button>
-          </Form.Item>
+          <Button type="primary" htmlType="submit" loading={loading} block>Sign In</Button>
         </Form>
       </Card>
     </div>

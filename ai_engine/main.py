@@ -1,11 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-import random
+import joblib
+import numpy as np
+import os
 
 app = FastAPI()
 
-# 1. Allow React (Port 5173) to talk to this AI Brain
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,55 +16,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Define what data we need to make a prediction
+# Load the Trained Model
+# (If file exists, load it. If not, wait for training)
+MODEL_PATH = "heart_disease_model.pkl"
+model = None
+
+if os.path.exists(MODEL_PATH):
+    model = joblib.load(MODEL_PATH)
+
 class PatientData(BaseModel):
     age: int
     medical_history: str
 
-@app.get("/")
-def read_root():
-    return {"status": "AI Engine Online", "model": "Heart_Disease_V1"}
-
-# 3. The Prediction Logic (The "Brain")
 @app.post("/predict_heart_risk")
 def predict_risk(data: PatientData):
-    risk_score = 0
-    reasons = []
-
-    # --- SIMULATED ML LOGIC ---
+    # 1. Parse Text to Numbers (Simple NLP)
+    history = data.medical_history.lower()
+    has_diabetes = 1 if "diabetes" in history else 0
+    has_bp = 1 if "blood pressure" in history or "hypertension" in history else 0
+    is_smoker = 1 if "smoker" in history else 0
     
-    # Rule 1: Age Factor
-    if data.age > 60:
-        risk_score += 40
-        reasons.append("High Age")
-    elif data.age > 40:
-        risk_score += 20
+    # 2. Prepare Features for the Model
+    features = np.array([[data.age, has_diabetes, has_bp, is_smoker]])
     
-    # Rule 2: Keywords in History (Simple NLP)
-    history_lower = data.medical_history.lower()
-    if "diabetes" in history_lower:
-        risk_score += 30
-        reasons.append("Diabetes Condition")
-    if "blood pressure" in history_lower or "hypertension" in history_lower:
-        risk_score += 25
-        reasons.append("Hypertension")
-    if "smoker" in history_lower:
-        risk_score += 20
-        reasons.append("Smoking History")
-
-    # Cap the score at 99%
-    final_score = min(risk_score, 99)
-    
-    # Determine Label
-    if final_score > 50:
-        status = "CRITICAL RISK"
-    elif final_score > 20:
-        status = "MODERATE RISK"
+    # 3. Predict using the "Brain" (if loaded)
+    if model:
+        risk_level = model.predict(features)[0]  # Returns 0, 1, 2, or 3
+        # Calculate a probability score (0-100%)
+        probability = model.predict_proba(features)[0][risk_level] * 100
     else:
-        status = "LOW RISK"
+        # Fallback if model isn't trained yet
+        risk_level = 1
+        probability = 50
+
+    # 4. Map Number to Text
+    labels = {0: "LOW RISK", 1: "MODERATE RISK", 2: "HIGH RISK", 3: "CRITICAL RISK"}
+    status = labels.get(risk_level, "UNKNOWN")
 
     return {
-        "risk_score": final_score,
+        "risk_score": int(probability),
         "status": status,
-        "analysis": reasons
+        "analysis": [
+            f"Model Prediction: Class {risk_level}",
+            f"Diabetes Detected: {'Yes' if has_diabetes else 'No'}",
+            f"Hypertension: {'Yes' if has_bp else 'No'}"
+        ]
     }
